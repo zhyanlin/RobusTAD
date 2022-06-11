@@ -8,7 +8,6 @@ boundaryCaller={'left':leftBoundaryCaller,'right':rightBoundaryCaller}
 
 
 
-
 @click.command()
 @click.option('--resol', default=5000, help='resolution')
 @click.option('--minibatch', default=False, type=bool, help='low')
@@ -30,7 +29,6 @@ def robusTAD(coolfile,prefix,resol,minw,maxw,alpha,ratio,minibatch,chr):
     else:
         chromnames=chr.split(',')
 
-
     for chr in chromnames:
         bin = c.bins()[['chrom', 'start', 'end']].fetch(chr)
         bin = np.asarray(bin)
@@ -44,14 +42,13 @@ def robusTAD(coolfile,prefix,resol,minw,maxw,alpha,ratio,minibatch,chr):
             regions.append(region)
 
     results={}
-
+    
     for region in tqdm(regions):
         mat = c.matrix(balance=True,sparse=True).fetch(region)
         if mat.nnz==0:
             continue
         mat = mat.todense()
         mat[np.isnan(mat)] = 0
-
 
         bins = np.asarray(c.bins()[['chrom', 'start', 'end']].fetch(region))
         for key in boundaryCaller:
