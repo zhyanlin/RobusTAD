@@ -1,7 +1,11 @@
-# RobusTAD
+# RobusTAD-v1
 Python implementation of RobusTAD: A Tool for Robust Annotation of Topologically Associating Domain Boundaries
 
-It takes .mcool file as input and output both left and right TAD boundary scores in a .bed file.
+It takes .mcool file or text file as input and output both left and right TAD boundary scores in a .bed file.
+
+plain text input format:
+
+chrom   leftbp  rightbp IF
 
 Please consider to cite our paper if you use this tool in your research:
 
