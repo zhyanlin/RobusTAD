@@ -1,8 +1,29 @@
 import numpy as np
 from numba import jit
-
+import numba as nb
+from tqdm import tqdm
+import click
 
 eps = np.finfo(float).eps
+
+@nb.njit
+def np_apply_along_axis(func1d, axis, arr):
+  assert arr.ndim == 2
+  assert axis in [0, 1]
+  if axis == 0:
+    result = np.empty(arr.shape[1])
+    for i in range(len(result)):
+      result[i] = func1d(arr[:, i])
+  else:
+    result = np.empty(arr.shape[0])
+    for i in range(len(result)):
+      result[i] = func1d(arr[i, :])
+  return result
+
+@nb.njit
+def nansum(array, axis=1):
+    return np_apply_along_axis(np.nansum, axis, array)
+
 
 
 @jit(nopython=True, parallel=True)
@@ -123,6 +144,8 @@ def fdr(target,decoy,alpha=0.05):
     numOfDecoy = 0
     while numOfTarget + numOfDecoy == 0 or numOfDecoy / (numOfTarget+eps) <= alpha:
         idx = numOfTarget + numOfDecoy
+        if idx>=len(val):
+            break
         cutoff = val[idx]
         if label[idx]:
             numOfTarget += 1
@@ -130,5 +153,36 @@ def fdr(target,decoy,alpha=0.05):
             numOfDecoy += 1
     if numOfDecoy / (numOfTarget+eps) > alpha:
         cutoff -= eps
-    return cutoff
+    return max([cutoff,0.15])
 
+
+# @jit(nopython=True, parallel=True)
+def distanceNormalization_by_mean(mat):
+    mat=np.triu(mat,k=0)
+    for i in range(1,mat.shape[0]):
+        mat[:-i,i:][np.diag_indices(mat.shape[0]-i, ndim=2)]/=np.nanmean(mat[:-i,i:][np.diag_indices(mat.shape[0]-i, ndim=2)])
+    # make the matrix symetric
+    mat+=mat.transpose()
+    mat[np.diag_indices(mat.shape[0], ndim=2)]/=np.nanmean(mat[np.diag_indices(mat.shape[0], ndim=2)])
+    return mat
+
+
+
+
+import pandas as pd
+import sys
+import pickle
+import tqdm
+@click.command()
+@click.option('--resol', default=5000,type=int, help='resolution [5000]')
+@click.option('--output',type=str,required=True, help='output')
+def createdatabase(resol,output):
+    database = {}
+    for filename in tqdm.tqdm(sys.stdin):
+        filename=filename.strip()
+        database[filename] = {}
+        f=pd.read_csv(filename,header=None,sep='\t')
+        for chrom in set(f[0]):
+            database[filename][chrom]=f[f[0]==chrom][[3,4,5,6]].to_numpy()
+    with open(output, 'wb') as handle:
+        pickle.dump({'data':database,'resol':5000}, handle, protocol=pickle.HIGHEST_PROTOCOL)
