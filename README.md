@@ -165,11 +165,11 @@ To create your own reference panel, you need to:
 2. Use this robustad createdatabase command to create a database saved as output.
 3. provide the new reference panel to lmcc.
 
-(optional) Load the new reference panel by run, <pre>refhic config init</pre>
+(optional) Load the new reference panel by run, <pre>robustad config init</pre>
 select (2) load your own panel.
 
 ### 2. How to edit config file?
-User We don't ask to edit config file manually, but you can still do it if you want: <pre>refhic config edit</pre>
+User We don't ask to edit config file manually, but you can still do it if you want: <pre>robustad config edit</pre>
 
 
 ## Citation
