@@ -437,7 +437,7 @@ def dp(data, lefts, rights, minDelta=0.3, minRatio=1.1, resol=5000, maxTAD=30000
     finalTADs = list(set(finalTADs))
 
     # addTADs = addback(lefts,rights, data,minTAD,maxTAD)
-    # finalTADs, badTads = cleanTAD(finalTADs, data)
+    finalTADs, badTads = cleanTAD(finalTADs, data)
     # for l, r in addTADs:
     #     if (l,r) not in finalTADs:
     #         finalTADs.append((l, r))
@@ -452,7 +452,7 @@ def dp(data, lefts, rights, minDelta=0.3, minRatio=1.1, resol=5000, maxTAD=30000
     unused['left'] = lefts - finalLefts
     unused['right'] = rights - finalRights
     print(unused)
-    badTads=[]
+    # badTads=[]
     return finalTADs,badTads
 
 
@@ -475,20 +475,28 @@ def dp(data, lefts, rights, minDelta=0.3, minRatio=1.1, resol=5000, maxTAD=30000
 @click.option('--maxtad', default=3000000, type=int, help='max TAD size [3000000]')
 # @click.option('--distance', default=50000, type=int, help='max distance for merging two TADs [50000]')
 @click.option('--ratio', default=1.2, type=float, help='min ratio for comparision [1.2]')
-@click.option('--delta', default=0.2, type=float, help='min score for forming a possible pair [0.2]')
+@click.option('--delta', default=0.1, type=float, help='min score for forming a possible pair [0.1]')
 # @click.option('--alpha', default=0.05, type=float, help='alpha-significant in FDR [0.05]')
 @click.option('--chr', default=None, help='comma separated chromosomes')
 @click.argument('coolfile', type=str, default=None, required=True)
 @click.argument('boundaryfile', type=str, default=None, required=True)
 @click.argument('prefix', type=str, default=None, required=True)
 def assembly(delta, ratio, resol, maxtad, mintad, boundaryfile, coolfile, prefix, chr):
-    try:
-        c = cooler.Cooler(coolfile+'::/resolutions/'+str(resol))
-    except:
+    '''
+    Pairing left and right boundaries into nested TADs.
+    '''
+    if cooler.fileops.is_cooler(coolfile):
         c = cooler.Cooler(coolfile)
-    if 'bin-size' in c.info and c.info['bin-size']!=resol:
-        print('contact map at '+str(resol)+' does not exist!\nGood bye!')
-        sys.exit(0)
+        if c.info['bin-size']!=resol:
+            print('contact map at '+str(resol)+' does not exist!\nGood bye!')
+            sys.exit(0)
+    else:
+        try:
+            c = cooler.Cooler(coolfile + '::/resolutions/' + str(resol))
+        except:
+            print('contact map at '+str(resol)+' does not exist!\nGood bye!')
+            sys.exit(0)
+
     print("analysis at ",resol, 'resolution')
     boundaryfile = pd.read_csv(boundaryfile, sep='\t', header=None)
     boundaryfile[[1,2]]//=resol
@@ -522,5 +530,5 @@ def assembly(delta, ratio, resol, maxtad, mintad, boundaryfile, coolfile, prefix
 
     result=pd.concat(pdresults)
     result[(result['Hq']==1) & (result['score']>0)].to_csv(prefix+'_hq.bed',sep='\t',index=False,header=False)
-    result.to_csv(prefix+'_all.bed', sep='\t', index=False, header=False)
+    result.to_csv(prefix+'_all.bed', sep='\t', index=False, header=True)
 

@@ -175,14 +175,25 @@ import pickle
 import tqdm
 @click.command()
 @click.option('--resol', default=5000,type=int, help='resolution [5000]')
-@click.option('--output',type=str,required=True, help='output')
-def createdatabase(resol,output):
+@click.argument('scores', type=str, default=None, required=True)
+@click.argument('output', type=str, default=None, required=True)
+def createdatabase(resol,output,scores):
+    '''
+    Custom reference panel creation \n
+    Step 1. use robustad boundary to compute boundary scores for all samples in the reference panel. \n
+    Step 2. use this command to create a database saved as output. \n
+    Step 3. provide the new reference panel to lmcc. \n
+    Parameters:\n
+    scores: A list of files for TAD boundary scores computed with the boundary command.\n
+    output: output filename.
+    '''
     database = {}
-    for filename in tqdm.tqdm(sys.stdin):
+    f=open(scores)
+    for filename in tqdm.tqdm(f):
         filename=filename.strip()
         database[filename] = {}
         f=pd.read_csv(filename,header=None,sep='\t')
         for chrom in set(f[0]):
             database[filename][chrom]=f[f[0]==chrom][[3,4,5,6]].to_numpy()
     with open(output, 'wb') as handle:
-        pickle.dump({'data':database,'resol':5000}, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump({'data':database,'resol':resol}, handle, protocol=pickle.HIGHEST_PROTOCOL)

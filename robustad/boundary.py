@@ -19,7 +19,7 @@ boundaryCaller={'left':leftBoundaryCaller,'right':rightBoundaryCaller}
 @click.argument('coolfile',type=str,default = None,required=True)
 @click.argument('prefix',type=str,default = None, required=True)
 def boundary(coolfile,prefix,resol,minw,maxw,alpha,ratio,chr,mind):
-    '''Detect left and right boundaries from Hi-C contact map'''
+    '''Individual sample only boundary annotation'''
 
     offset ={'left':1 * resol, 'right':-1 * resol}
 
@@ -30,13 +30,18 @@ def boundary(coolfile,prefix,resol,minw,maxw,alpha,ratio,chr,mind):
     else:
         mind = mind*1000
 
-    try:
-        c = cooler.Cooler(coolfile+'::/resolutions/'+str(resol))
-    except:
+    if cooler.fileops.is_cooler(coolfile):
         c = cooler.Cooler(coolfile)
-    if 'bin-size' in c.info and c.info['bin-size']!=resol:
-        print('contact map at '+str(resol)+' does not exist!\nGood bye!')
-        sys.exit(0)
+        if c.info['bin-size']!=resol:
+            print('contact map at '+str(resol)+' does not exist!\nGood bye!')
+            sys.exit(0)
+    else:
+        try:
+            c = cooler.Cooler(coolfile + '::/resolutions/' + str(resol))
+        except:
+            print('contact map at '+str(resol)+' does not exist!\nGood bye!')
+            sys.exit(0)
+
     print("analysis at ",resol, 'resolution')
 
     if chr is None:

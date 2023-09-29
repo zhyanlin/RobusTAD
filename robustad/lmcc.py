@@ -4,6 +4,8 @@ import click
 from tqdm import tqdm
 import pandas as pd
 import pickle
+from robustad.config import checkConfig,loadConfig
+import sys
 from robustad.calcTADBoundaryScore import leftBoundaryCaller,rightBoundaryCaller
 boundaryCaller={'left':leftBoundaryCaller,'right':rightBoundaryCaller}
 
@@ -36,23 +38,32 @@ def fetchLMCC(chrom, target, database, btype, win=5):
 @click.option('--minW', default=50,type=int, help='min window size in kb [50]')
 @click.option('--maxW', default=600, type=int,help='max window size in kb [600]')
 @click.option('--chr',default=None,help='comma separated chromosomes')
+@click.option('--panel',default=None,help='custom reference panel')
 @click.argument('coolfile',type=str,default = None,required=True)
 @click.option('--ratio',default=1.2,type=float,help ='minRatio for comparision [1.2]')
 @click.argument('prefix',type=str,default = None, required=True)
 @click.option('--ds',type=int,default = -1, required=False, help="development only; please leave as default.")
 @click.option('--resol',type=int,default=5000,help='resol [5000]')
-def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind):
-    '''Detect left and right boundaries from Hi-C contact map with LMCC approaches'''
-
-    if resol==5000:
-        # with open('/home/yanlin/workspace/PhD/robusTAD/src/robustadv2/experiment/rerunSep1/hg38_5kb_50_600.pkl', 'rb') as handle:#
-        with open('/home/yanlin/workspace/PhD/nextProject/2022_revisit/hg38Dtabase_5kb.pkl', 'rb') as handle:
-            database = pickle.load(handle)
-                
-    elif resol == 10000:
-        with open('/home/yanlin/workspace/PhD/nextProject/2022_revisit/hg38Dtabase_10kb.pkl', 'rb') as handle:
-            database = pickle.load(handle)
+def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind,panel):
+    '''LMCC based boundary annotation [default mode]'''
+    if checkConfig():
+        config=loadConfig()
+    else:
+        print('Please run robustad config first.')
+        print('Good bye!')
+        sys.exit()
     
+    if panel:
+        with open(panel, 'rb') as handle:
+            database = pickle.load(handle)
+    else:
+        with open(config['reference']['uri'], 'rb') as handle:
+            database = pickle.load(handle)            
+    if database['resol']!=resol:
+        print('resolutions mistach:\n','database resol=',database['resol'],'\nrequired resol=',resol)
+        print('Please provide a new database, or change your resolution in analysis.')
+        sys.exit()
+
     if ds>-1:
         samples=[]
         for key in database['data']:
@@ -76,7 +87,18 @@ def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind):
 
     offset ={'left':1 * resol, 'right':-1 * resol}
 
-    c = cooler.Cooler(coolfile + '::/resolutions/' + str(resol))
+    if cooler.fileops.is_cooler(coolfile):
+        c = cooler.Cooler(coolfile)
+        if c.info['bin-size']!=resol:
+            print('contact map at '+str(resol)+' resolution does not exist!\nGood bye!')
+            sys.exit(0)
+    else:
+        try:
+            c = cooler.Cooler(coolfile + '::/resolutions/' + str(resol))
+        except:
+            print('contact map at '+str(resol)+' resolution does not exist!\nGood bye!')
+            sys.exit(0)
+    print("analysis at ",resol, 'resolution')
     if chr is None:
         chromnames=c.chromnames
     else:
@@ -86,7 +108,7 @@ def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind):
 
     results={}
 
-    print('initial call with robusTAD')
+    print('initial boundary call ...')
     for chr in tqdm(chromnames):
         mat = c.matrix(balance=True,sparse=True).fetch(chr).tocsr()
         if mat.nnz<1000:
@@ -114,7 +136,7 @@ def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind):
 
     win = 5
     newResults = []
-    print('refine with LMCC')
+    print('LMCC boundary refinement')
     for chrom in tqdm(set(result[0])):
         chrdata = result[result[0] == chrom].to_numpy()
         # update right boundary call
@@ -153,6 +175,8 @@ def lmcc(coolfile,prefix,alpha,chr,ratio,resol,minw,maxw,ds,mind):
         newResults.append(chrdata)
 
     np.savetxt(prefix + '.bed', np.concatenate(newResults), fmt='%s', delimiter='\t')
+    print('Boundary predictions with scores are saved to ',prefix + '.bed .')
+    print ('Please run the following function to detect TADs:\nrobustad assembly [OPTIONS] {coolfile} {boundaryfile} PREFIX'.format(coolfile=coolfile,boundaryfile=prefix + '.bed'))
 
 
 if __name__ =='__main__':

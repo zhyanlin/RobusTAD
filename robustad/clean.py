@@ -169,9 +169,9 @@ def cleanTAD(tads=None,data=None):
         s, idx,cscore = filterTAD(m, start, l, r)
         peak = np.abs(idx[np.argmax(s)])
         rank = np.argwhere(np.argsort(-np.asarray(s)) == 5).flatten()[0]
-
+        # print(l,r)
         corner = o2oe(data[l - 8:l + 9, r - 8:r + 9], l - 8, r - 8, diagExp)
-        if np.sum(~np.isnan(corner)) > 100:
+        if corner.shape == looptpl.shape and np.sum(~np.isnan(corner)) > 100:
             cornerpcc = pcc(corner[~np.isnan(corner)], looptpl[~np.isnan(corner)])[0]
         else:
             cornerpcc = -1
@@ -182,17 +182,9 @@ def cleanTAD(tads=None,data=None):
             data[np.max(np.asarray([0, l - offset - 4])):l - offset + 5,
             np.max(np.asarray([0, r - offset - 4])):r - offset + 5] = np.nan  # mask dot corner
             goodtads.append((l, r))
-            print('cscore',cscore,l,r)
+            # print('cscore',cscore,l,r)
         else:
             badtads.append((l, r))
-
-            # plt.figure()
-            # plt.plot(idx, s, label='mask')
-            # plt.plot([0, 0], [0, 1])
-            # plt.title(str(l) + ' ' + str(r) + ' ' + str(idx[np.argmax(s)]) + ' ,' + str(rank) + ' ' + str(
-            #         np.var(s)) + ', '  + str(cornerpcc) )
-            # plt.legend()
-            # plt.show()
 
     return goodtads,badtads
 
@@ -219,7 +211,7 @@ def addback(boundaries,dpTads,data,resol=5000):
             label[right[i]]=2
     leftidx = np.argwhere((label==1) | (label==3)).flatten()
     for l in leftidx:
-        for r in range(l+6,min([maxij,l+5000000//5000])):
+        for r in range(l+6,min([maxij,l+5000000//resol])):
             if label[r] >= 2:
                 corner = o2oe(data[l - 8:l + 9, r - 8:r + 9], l - 8, r - 8, diagExp)
                 if np.sum(~np.isnan(corner)) > 100:
@@ -238,17 +230,13 @@ def addback(boundaries,dpTads,data,resol=5000):
                                 nestTADs.append(tad2)
 
                     score = Delta(data=data[start:2*r-l,start:2*r-l].copy(), offset=start, left=l, right=r, minRatio=1, mask=nestTADs)
-                    # if l==11169 and r==11413:
-                    #     plt.figure()
-                    #     plt.imshow(data[l-200:r+200,l-200:r+200],cmap=cmap,vmax=np.nanmean(np.diag(data[l-200:r+200,l-200:r+200],5)))
-                    #     plt.show()
-                    print('score',l,r,score)
+                    # print('score',l,r,score)
                     if score > 0.:
                         result.append((l,r))
                 else:
                     badnum+=1
-    print('add back',len(result))
-    print('bad',badnum)
+    # print('add back',len(result))
+    # print('bad',badnum)
     return result
 
 
@@ -327,44 +315,53 @@ def summary(HqTads,LqTads,data,chr,resol,minRatio=1):
     return pd.DataFrame.from_dict({'chrom':chrs,'startbp':startbp,'endbp':endbp,'score':score,'nestedScore':nestedScore,'Hq':Hq,'level':level})
 
 @click.command()
+@click.option('--resol',type=int,default=5000,help='resol [5000]')
 @click.argument('tads', type=str, default=None, required=True)
 @click.argument('boundaries', type=str, default=None, required=True)
-@click.argument('mcool', type=str, default=None, required=True)
-def doclean(tads,boundaries,mcool):
-    allf=tads+'.all'#open(,'w')
-    goodf = tads + '.good'#open(, 'w')
+@click.argument('cool', type=str, default=None, required=True)
+def clean(tads,boundaries,cool,resol):
+    '''
+    Filtering TADs [optional step].
+    '''
+    goodf = tads.replace('.bed','') + '_cleaned.bed'
     tads=pd.read_csv(tads,header=None,sep='\t')
     boundaries=pd.read_csv(boundaries,header=None,sep='\t')
 
 
     pdresults=[]
-    c = cooler.Cooler(mcool + '::/resolutions/5000')
-    for chr in set(tads[0]):
+    if cooler.fileops.is_cooler(cool):
+        c = cooler.Cooler(cool)
+        if c.info['bin-size']!=resol:
+            print('contact map at '+str(resol)+' resolution does not exist!\nGood bye!')
+            sys.exit(0)
+    else:
+        try:
+            c = cooler.Cooler(cool + '::/resolutions/' + str(resol))
+        except:
+            print('contact map at '+str(resol)+' resolution does not exist!\nGood bye!')
+            sys.exit(0)
+
+    for chr in tqdm(set(tads[0])):
         tadchr=tads[tads[0]==chr].reset_index(drop=True)
         boundarychr = boundaries[boundaries[0]==chr].reset_index(drop=True)
         ctads=[]
         for i in range(len(tadchr)):
-            ctads.append((tadchr[1][i]//5000,tadchr[2][i]//5000))
+            ctads.append((tadchr[1][i]//resol,tadchr[2][i]//resol))
         mat = c.matrix(balance=True,sparse=False).fetch(chr)
-        addTADs = addback(boundarychr,ctads, mat)
+        addTADs = addback(boundarychr,ctads, mat,resol=resol)
 
         goodtad,badtad = cleanTAD(ctads,mat)
-
+        del mat
         for l,r in addTADs:
             if (l,r) not in goodtad:
                 goodtad.append((l,r))
-
         mat = c.matrix(balance=True, sparse=False).fetch(chr)
-        pdresults.append(summary(goodtad, badtad, mat, chr, 5000, minRatio=1))
+        pdresults.append(summary(goodtad, badtad, mat, chr, resol, minRatio=1))
+        del mat
 
     result=pd.concat(pdresults)
     result[(result['Hq']==1) & (result['score']>0)].to_csv(goodf,sep='\t',index=False,header=False)
-    result.to_csv(allf, sep='\t', index=False, header=False)
-        # print('len(goodtad),len(badtad),len(tadchr)',len(goodtad),len(badtad),len(tadchr))
-        # for i in range(len(goodtad)):
-        #     goodf.write(chr+'\t'+str(goodtad[i][0]*5000)+'\t'+str(goodtad[i][1]*5000)+'\tori\n')
-        # for i in range(len(badtad)):
-        #     badf.write(chr+'\t'+str(badtad[i][0]*5000)+'\t'+str(badtad[i][1]*5000)+'\n')
+    # result.to_csv(allf, sep='\t', index=False, header=False)
 
 
 
